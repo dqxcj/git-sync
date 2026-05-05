@@ -5,7 +5,7 @@ import { DeepSeekClient } from "./deepseek";
 import { GitSyncSettingTab } from "./settings";
 import { StatusBarManager } from "./status-bar";
 import { DEFAULT_SETTINGS, PluginSettings, SyncStrategy } from "./types";
-import { getLogs, clearLogs } from "./logger";
+import { getLogs, clearLogs, initLogger } from "./logger";
 
 export default class GitSyncPlugin extends Plugin {
   settings: PluginSettings;
@@ -16,6 +16,10 @@ export default class GitSyncPlugin extends Plugin {
 
   async onload(): Promise<void> {
     await this.loadSettings();
+
+    // Init logger file
+    const vaultPath = (this.app.vault.adapter as any).getBasePath();
+    initLogger(vaultPath);
 
     // Settings tab
     this.addSettingTab(new GitSyncSettingTab(this.app, this));
