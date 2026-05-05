@@ -232,34 +232,31 @@ export class GitCore {
       ? [{ ref: "main", remoteRef: "refs/heads/master" }, { ref: "main" }]
       : [{ ref: "main" }, { ref: "main", remoteRef: "refs/heads/master" }];
 
-    // Try normal push first (safe, won't overwrite others' work)
-    for (const force of [false, true]) {
-      for (const opts of targets) {
-        try {
-          await git.push({
-            fs, http,
-            dir: this.dir, gitdir: this.gitdir,
-            url: this.authUrl(),
-            force,
-            ...opts,
-          });
-          this.log(`push: main -> ${opts.remoteRef || "main"} ${force ? "(force)" : ""} 成功`);
+    for (const opts of targets) {
+      try {
+        await git.push({
+          fs, http,
+          dir: this.dir, gitdir: this.gitdir,
+          url: this.authUrl(),
+          force: false,
+          ...opts,
+        });
+        this.log(`push: main -> ${opts.remoteRef || "main"} 成功`);
+        return;
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.includes("unpack ok")) {
+          this.log(`push: 成功 (unpack ok)`);
           return;
-        } catch (err: unknown) {
-          const msg = err instanceof Error ? err.message : String(err);
-          if (msg.includes("unpack ok")) {
-            this.log(`push: 成功 (unpack ok)`);
-            return;
-          }
-          if (msg.includes("fast-forward") || msg.includes("rejected")) {
-            this.log(`push: 非快进被拒, 将尝试 force`);
-            break; // Break inner loop, try with force
-          }
+        }
+        if (msg.includes("fast-forward") || msg.includes("rejected")) {
+          this.log(`push: 被拒绝, 远程有更新, 需先 pull`);
+        } else {
           this.log(`push: main -> ${opts.remoteRef || "main"} 失败: ${msg.substring(0, 80)}`);
         }
       }
     }
-    throw new Error("push 失败: 无法推送到远程");
+    throw new Error("push 被拒: 远程有更新, 下次 sync 自动 pull 合并");
   }
 
   async initAndPull(): Promise<ConflictFile[]> {

@@ -98,8 +98,10 @@ export default class GitSyncPlugin extends Plugin {
       this.notesStatusBar = new StatusBarManager(this.addStatusBarItem(), "笔记");
       this.notesSyncer = new Syncer(notesGit, notesLlm, this.settings.llmCommitInterval, (event) => {
         this.notesStatusBar?.update(event);
-        if (event.type === "pushing") new Notice(`Git 同步：推送中...`);
-        if (event.type === "idle" && event.message?.includes("就绪")) new Notice(`Git 同步完成`);
+        if (event.type === "pulling") new Notice("Git 同步：拉取中...", 3000);
+        if (event.type === "pushing") new Notice("Git 同步：推送中...", 3000);
+        if (event.type === "conflict") new Notice(`Git 同步：${event.message}`, 5000);
+        if (event.type === "error") new Notice(`Git 同步失败：${event.message}`, 8000);
       }, this.hasRemoteAuth(), this.settings.debugMode);
     }
 

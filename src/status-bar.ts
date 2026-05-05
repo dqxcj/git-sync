@@ -20,8 +20,8 @@ export class StatusBarManager {
 
     switch (event.type) {
       case "idle":
-        this.statusBarEl.addClass("git-sync-status-ok");
-        this.statusBarEl.setText(`${this.prefix}: ${event.message || "就绪"}`);
+        // Hide status when idle — no need to show "就绪"
+        this.statusBarEl.setText("");
         break;
       case "error":
         this.statusBarEl.addClass("git-sync-status-error");
