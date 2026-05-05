@@ -1,6 +1,4 @@
 import { Plugin, Notice, Platform } from "obsidian";
-import * as git from "isomorphic-git";
-import http from "isomorphic-git/http/node";
 import { GitCore } from "./git-core";
 import { Syncer } from "./syncer";
 import { DeepSeekClient } from "./deepseek";
@@ -79,6 +77,7 @@ export default class GitSyncPlugin extends Plugin {
       this.notesStatusBar = new StatusBarManager(this.addStatusBarItem(), "笔记");
       this.notesSyncer = new Syncer(notesGit, notesLlm, this.settings.llmCommitInterval, (event) => {
         this.notesStatusBar?.update(event);
+        if (event.type === "committing") new Notice(`Git 同步：${event.message}`);
       }, this.hasRemoteAuth());
     }
 
@@ -90,6 +89,7 @@ export default class GitSyncPlugin extends Plugin {
       this.configStatusBar = new StatusBarManager(this.addStatusBarItem(), "配置");
       this.configSyncer = new Syncer(configGit, configLlm, this.settings.llmCommitInterval, (event) => {
         this.configStatusBar?.update(event);
+        if (event.type === "committing") new Notice(`Git 同步（配置）：${event.message}`);
       }, !!(this.settings.configRepo.token));
     }
   }
@@ -135,25 +135,36 @@ export default class GitSyncPlugin extends Plugin {
   }
 
   async testGitAuth(url: string, token: string): Promise<{ ok: boolean; message: string }> {
-    const headers = { Authorization: `Bearer ${token}` };
+    // Extract owner/repo from git URL
+    const clean = url.replace(/\.git$/, "").replace(/\/$/, "");
+    const isGitee = clean.includes("gitee.com");
+    const match = clean.match(/(?:github\.com|gitee\.com)[:\/]([^\/]+\/[^\/]+)$/);
+    if (!match) return { ok: false, message: "无法解析仓库地址格式" };
 
+    const repo = match[1];
     try {
-      const info = await git.getRemoteInfo({
-        http,
-        url,
-        headers,
-      });
-      const refs = info.refs ? Object.keys(info.refs).length : 0;
-      return { ok: true, message: `连接成功 (${refs} 个远程引用)` };
+      let apiUrl: string;
+      let fetchOpts: RequestInit | undefined;
+
+      if (isGitee) {
+        apiUrl = `https://gitee.com/api/v5/repos/${repo}?access_token=${encodeURIComponent(token)}`;
+      } else {
+        apiUrl = `https://api.github.com/repos/${repo}`;
+        fetchOpts = { headers: { Authorization: `Bearer ${token}` } };
+      }
+
+      const resp = await fetch(apiUrl, fetchOpts);
+      if (resp.ok) {
+        const data = await resp.json();
+        const name = data.full_name || data.name || repo;
+        return { ok: true, message: `仓库有效：${name}` };
+      }
+      if (resp.status === 401 || resp.status === 403 || resp.status === 404) {
+        return { ok: false, message: "令牌无效、无权限或仓库不存在" };
+      }
+      return { ok: false, message: `HTTP ${resp.status}` };
     } catch (e: any) {
-      const msg = e.message || String(e);
-      if (msg.includes("401") || msg.includes("403") || msg.includes("Authentication")) {
-        return { ok: false, message: "令牌无效或无权限" };
-      }
-      if (msg.includes("ENOTFOUND") || msg.includes("fetch")) {
-        return { ok: false, message: "网络连接失败，请检查地址" };
-      }
-      return { ok: false, message: msg.substring(0, 100) };
+      return { ok: false, message: "网络连接失败，请检查地址" };
     }
   }
 

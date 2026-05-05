@@ -106,6 +106,26 @@ export class GitSyncSettingTab extends PluginSettingTab {
               this.plugin.settings.configRepo.token = value;
               await this.plugin.saveSettings();
             })
+        )
+        .addButton((btn) =>
+          btn.setButtonText("测试令牌").onClick(async () => {
+            const url = this.plugin.settings.configRepo.remoteUrl;
+            const token = this.plugin.settings.configRepo.token;
+            if (!url || !token) {
+              new Notice("请先填写远程地址和令牌");
+              return;
+            }
+            btn.setButtonText("测试中...");
+            btn.setDisabled(true);
+            try {
+              const result = await this.plugin.testGitAuth(url, token);
+              new Notice(result.ok ? `✓ 令牌有效：${result.message}` : `✗ 令牌无效：${result.message}`);
+            } catch (e: any) {
+              new Notice(`✗ 测试失败：${e.message || e}`);
+            }
+            btn.setButtonText("测试令牌");
+            btn.setDisabled(false);
+          })
         );
     }
 
