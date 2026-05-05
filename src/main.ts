@@ -83,14 +83,14 @@ export default class GitSyncPlugin extends Plugin {
     }
 
     // Config repo
-    if (this.settings.configRepo.enabled && this.settings.configRepo.remoteUrl && this.settings.configRepo.token) {
+    if (this.settings.configRepo.enabled && this.settings.configRepo.remoteUrl) {
       const configDir = `${vaultPath}/.obsidian`;
       const configGit = new GitCore(configDir, `${configDir}/.git`, this.settings.configRepo.remoteUrl, this.settings.configRepo.token);
       const configLlm = new DeepSeekClient(this.settings.deepseekApiKey, this.settings.deepseekUrl, this.settings.deepseekModel);
       this.configStatusBar = new StatusBarManager(this.addStatusBarItem(), "配置");
       this.configSyncer = new Syncer(configGit, configLlm, this.settings.llmCommitInterval, (event) => {
         this.configStatusBar?.update(event);
-      });
+      }, !!(this.settings.configRepo.token));
     }
   }
 
