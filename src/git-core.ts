@@ -17,8 +17,8 @@ export class GitCore {
     this.token = token;
   }
 
-  private authHeaders(): Record<string, string> {
-    return { Authorization: `Bearer ${this.token}` };
+  private onAuth() {
+    return { username: "oauth2", password: this.token };
   }
 
   async isRepo(): Promise<boolean> {
@@ -52,7 +52,7 @@ export class GitCore {
       ref: "main",
       singleBranch: true,
       author: { name: "Obsidian Git Sync", email: "sync@obsidian.local" },
-      headers: this.authHeaders(),
+      onAuth: () => this.onAuth(),
     });
   }
 
@@ -150,7 +150,7 @@ export class GitCore {
       gitdir: this.gitdir,
       remote: "origin",
       ref: "main",
-      headers: this.authHeaders(),
+      onAuth: () => this.onAuth(),
     });
   }
 
