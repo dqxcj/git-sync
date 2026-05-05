@@ -1,0 +1,3 @@
+.git-sync-status-ok { color: var(--text-muted); }
+.git-sync-status-error { color: var(--text-error); }
+.git-sync-status-syncing { color: var(--text-accent); }

@@ -1,0 +1,23 @@
+{
+  "name": "obsidian-git-sync",
+  "version": "0.1.0",
+  "description": "Auto-sync Obsidian vault via isomorphic-git with LLM conflict resolution",
+  "main": "main.js",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+    "typecheck": "tsc -noEmit -skipLibCheck"
+  },
+  "author": "dqxcj",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^16.11.6",
+    "builtin-modules": "3.3.0",
+    "esbuild": "0.17.3",
+    "obsidian": "latest",
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "isomorphic-git": "^1.25.0"
+  }
+}
