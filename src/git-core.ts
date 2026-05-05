@@ -26,8 +26,12 @@ export class GitCore {
 
   private onAuth() {
     // Basic Auth for HTTPS git: base64(username:password)
-    // Gitee: username can be anything, password is the token
-    return { username: "api", password: this.token };
+    // Gitee requires the real username, GitHub accepts anything
+    // Extract username from remote URL: https://gitee.com/USERNAME/repo.git
+    let username = "git";
+    const match = this.remoteUrl.match(/\/([^\/]+)\/[^\/]+(?:\.git)?$/);
+    if (match) username = match[1];
+    return { username, password: this.token };
   }
 
   async isRepo(): Promise<boolean> {
