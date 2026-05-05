@@ -25,13 +25,15 @@ export class GitCore {
   }
 
   private onAuth() {
-    // Basic Auth for HTTPS git: base64(username:password)
-    // Gitee requires the real username, GitHub accepts anything
-    // Extract username from remote URL: https://gitee.com/USERNAME/repo.git
+    return { username: "git", password: this.token };
+  }
+
+  // Embed credentials in URL — more reliable than onAuth for isomorphic-git
+  private authUrl(): string {
     let username = "git";
     const match = this.remoteUrl.match(/\/([^\/]+)\/[^\/]+(?:\.git)?$/);
     if (match) username = match[1];
-    return { username, password: this.token };
+    return this.remoteUrl.replace("https://", `https://${encodeURIComponent(username)}:${encodeURIComponent(this.token)}@`);
   }
 
   async isRepo(): Promise<boolean> {
@@ -75,11 +77,10 @@ export class GitCore {
       http,
       dir: this.dir,
       gitdir: this.gitdir,
-      remote: "origin",
+      url: this.authUrl(),
       ref: "main",
       singleBranch: true,
       author: { name: "Obsidian Git Sync", email: "sync@obsidian.local" },
-      onAuth: () => this.onAuth(),
     });
   }
 
@@ -217,15 +218,13 @@ export class GitCore {
         http,
         dir: this.dir,
         gitdir: this.gitdir,
-        remote: "origin",
+        url: this.authUrl(),
         ref: "main",
-        onAuth: () => this.onAuth(),
       });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      // Gitee push succeeds but response format isn't parsed by isomorphic-git
       if (msg.includes("unpack ok")) {
-        this.log("push: Gitee response parsed as error but push likely succeeded");
+        this.log("push: unpack ok parse error, push likely succeeded");
         return;
       }
       throw err;
