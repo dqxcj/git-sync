@@ -6,6 +6,14 @@ import { GitSyncSettingTab } from "./settings";
 import { StatusBarManager } from "./status-bar";
 import { DEFAULT_SETTINGS, PluginSettings, SyncStrategy } from "./types";
 import { getLogs, clearLogs, initLogger } from "./logger";
+import { createVaultFS } from "./fs-adapter";
+
+function getPlatformFS(plugin: any) {
+  if (Platform.isDesktop) {
+    return require("fs");
+  }
+  return createVaultFS(plugin.app.vault.adapter);
+}
 
 export default class GitSyncPlugin extends Plugin {
   settings: PluginSettings;
@@ -89,11 +97,12 @@ export default class GitSyncPlugin extends Plugin {
   }
 
   private initSyncers(): void {
-    const vaultPath = (this.app.vault.adapter as any).getBasePath();
+    const vaultPath = ((this.app.vault.adapter as any).getBasePath?.() || (this.app.vault.adapter as any).basePath || this.app.vault.getRoot?.()?.path || "");
+    const platformFs = getPlatformFS(this);
 
     // Notes repo
     if (this.settings.notesRepo.enabled && this.settings.notesRepo.remoteUrl) {
-      const notesGit = new GitCore(vaultPath, `${vaultPath}/.git`, this.settings.notesRepo.remoteUrl, this.settings.notesRepo.token, this.settings.debugMode);
+      const notesGit = new GitCore(vaultPath, `${vaultPath}/.git`, this.settings.notesRepo.remoteUrl, this.settings.notesRepo.token, this.settings.debugMode, platformFs);
       const notesLlm = new DeepSeekClient(this.settings.deepseekApiKey, this.settings.deepseekUrl, this.settings.deepseekModel);
       this.notesStatusBar = new StatusBarManager(this.addStatusBarItem(), "笔记");
       this.notesSyncer = new Syncer(notesGit, notesLlm, this.settings.llmCommitInterval, (event) => {
@@ -108,7 +117,7 @@ export default class GitSyncPlugin extends Plugin {
     // Config repo
     if (this.settings.configRepo.enabled && this.settings.configRepo.remoteUrl) {
       const configDir = `${vaultPath}/.obsidian`;
-      const configGit = new GitCore(configDir, `${configDir}/.git`, this.settings.configRepo.remoteUrl, this.settings.configRepo.token, this.settings.debugMode);
+      const configGit = new GitCore(configDir, `${configDir}/.git`, this.settings.configRepo.remoteUrl, this.settings.configRepo.token, this.settings.debugMode, platformFs);
       const configLlm = new DeepSeekClient(this.settings.deepseekApiKey, this.settings.deepseekUrl, this.settings.deepseekModel);
       this.configStatusBar = new StatusBarManager(this.addStatusBarItem(), "配置");
       this.configSyncer = new Syncer(configGit, configLlm, this.settings.llmCommitInterval, (event) => {
