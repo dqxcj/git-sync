@@ -226,6 +226,20 @@ export class GitSyncSettingTab extends PluginSettingTab {
           })
       );
 
+    new Setting(containerEl)
+      .setName("LLM 提交间隔")
+      .setDesc("1 = 每次提交都让 LLM 生成 commit 信息；N = 累积 N 次提交后总结一次")
+      .addSlider((slider) =>
+        slider
+          .setLimits(1, 20, 1)
+          .setValue(this.plugin.settings.llmCommitInterval)
+          .setDynamicTooltip()
+          .onChange(async (value) => {
+            this.plugin.settings.llmCommitInterval = value;
+            await this.plugin.saveSettings();
+          })
+      );
+
     // --- Debug ---
     containerEl.createEl("h3", { text: "调试" });
 
@@ -237,20 +251,6 @@ export class GitSyncSettingTab extends PluginSettingTab {
           .setValue(this.plugin.settings.debugMode)
           .onChange(async (value) => {
             this.plugin.settings.debugMode = value;
-            await this.plugin.saveSettings();
-          })
-      );
-
-    new Setting(containerEl)
-      .setName("LLM 提交间隔")
-      .setDesc("1 = 每次提交都让 LLM 生成 commit 信息；N = 累积 N 次提交后总结一次")
-      .addSlider((slider) =>
-        slider
-          .setLimits(1, 20, 1)
-          .setValue(this.plugin.settings.llmCommitInterval)
-          .setDynamicTooltip()
-          .onChange(async (value) => {
-            this.plugin.settings.llmCommitInterval = value;
             await this.plugin.saveSettings();
           })
       );
