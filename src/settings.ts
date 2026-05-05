@@ -14,17 +14,17 @@ export class GitSyncSettingTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
 
-    containerEl.createEl("h2", { text: "Git Sync Settings" });
+    containerEl.createEl("h2", { text: "Git 同步设置" });
 
     // --- Notes Repo Section ---
-    containerEl.createEl("h3", { text: "Notes Repository" });
+    containerEl.createEl("h3", { text: "笔记仓库" });
 
     new Setting(containerEl)
-      .setName("Remote URL")
-      .setDesc("Git remote for notes (Gitee/GitHub HTTPS URL)")
+      .setName("远程地址")
+      .setDesc("笔记的 Git 远程仓库地址（Gitee/GitHub HTTPS）")
       .addText((text) =>
         text
-          .setPlaceholder("https://gitee.com/user/notes.git")
+          .setPlaceholder("https://gitee.com/用户名/笔记.git")
           .setValue(this.plugin.settings.notesRepo.remoteUrl)
           .onChange(async (value) => {
             this.plugin.settings.notesRepo.remoteUrl = value;
@@ -33,11 +33,11 @@ export class GitSyncSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName("Token")
-      .setDesc("Personal access token for notes repo")
+      .setName("访问令牌")
+      .setDesc("笔记仓库的个人访问令牌（Token）")
       .addText((text) =>
         text
-          .setPlaceholder("ghp_xxx or gitee token")
+          .setPlaceholder("ghp_xxx 或 Gitee 令牌")
           .setValue(this.plugin.settings.notesRepo.token)
           .onChange(async (value) => {
             this.plugin.settings.notesRepo.token = value;
@@ -46,11 +46,11 @@ export class GitSyncSettingTab extends PluginSettingTab {
       );
 
     // --- Config Repo Section ---
-    containerEl.createEl("h3", { text: "Config Repository (.obsidian/)" });
+    containerEl.createEl("h3", { text: "配置仓库（.obsidian/）" });
 
     new Setting(containerEl)
-      .setName("Enable config repo")
-      .setDesc("Sync .obsidian/ separately (plugins, themes, settings)")
+      .setName("启用配置仓库")
+      .setDesc("将 .obsidian/ 目录（插件、主题、设置）单独同步到另一个仓库")
       .addToggle((toggle) =>
         toggle
           .setValue(this.plugin.settings.configRepo.enabled)
@@ -63,11 +63,11 @@ export class GitSyncSettingTab extends PluginSettingTab {
 
     if (this.plugin.settings.configRepo.enabled) {
       new Setting(containerEl)
-        .setName("Config Remote URL")
-        .setDesc("Git remote for .obsidian/ config")
+        .setName("配置仓库远程地址")
+        .setDesc("配置仓库的 Git 远程地址")
         .addText((text) =>
           text
-            .setPlaceholder("https://gitee.com/user/obsidian-config.git")
+            .setPlaceholder("https://gitee.com/用户名/obsidian-config.git")
             .setValue(this.plugin.settings.configRepo.remoteUrl)
             .onChange(async (value) => {
               this.plugin.settings.configRepo.remoteUrl = value;
@@ -76,11 +76,11 @@ export class GitSyncSettingTab extends PluginSettingTab {
         );
 
       new Setting(containerEl)
-        .setName("Config Token")
-        .setDesc("Token for config repo")
+        .setName("配置仓库访问令牌")
+        .setDesc("配置仓库的个人访问令牌")
         .addText((text) =>
           text
-            .setPlaceholder("ghp_xxx or gitee token")
+            .setPlaceholder("ghp_xxx 或 Gitee 令牌")
             .setValue(this.plugin.settings.configRepo.token)
             .onChange(async (value) => {
               this.plugin.settings.configRepo.token = value;
@@ -90,17 +90,17 @@ export class GitSyncSettingTab extends PluginSettingTab {
     }
 
     // --- Sync Strategy ---
-    containerEl.createEl("h3", { text: "Sync Strategy" });
+    containerEl.createEl("h3", { text: "同步策略" });
 
     new Setting(containerEl)
-      .setName("Sync strategy")
-      .setDesc("When to trigger sync")
+      .setName("同步方式")
+      .setDesc("选择触发同步的时机")
       .addDropdown((dropdown) =>
         dropdown
-          .addOption("manual", "Manual only")
-          .addOption("startup-shutdown", "On vault open/close")
-          .addOption("timer", "Periodic timer")
-          .addOption("all", "All triggers")
+          .addOption("manual", "仅手动触发")
+          .addOption("startup-shutdown", "打开/关闭仓库时")
+          .addOption("timer", "定时同步")
+          .addOption("all", "全部启用")
           .setValue(this.plugin.settings.syncStrategy)
           .onChange(async (value) => {
             this.plugin.settings.syncStrategy = value as SyncStrategy;
@@ -110,8 +110,8 @@ export class GitSyncSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName("Timer interval (minutes)")
-      .setDesc("How often to auto-sync when timer strategy is active")
+      .setName("定时间隔（分钟）")
+      .setDesc("定时同步的间隔时间")
       .addSlider((slider) =>
         slider
           .setLimits(1, 120, 1)
@@ -125,11 +125,11 @@ export class GitSyncSettingTab extends PluginSettingTab {
       );
 
     // --- LLM Settings ---
-    containerEl.createEl("h3", { text: "DeepSeek LLM" });
+    containerEl.createEl("h3", { text: "DeepSeek 大模型" });
 
     new Setting(containerEl)
       .setName("API Key")
-      .setDesc("DeepSeek API key")
+      .setDesc("DeepSeek API 密钥")
       .addText((text) =>
         text
           .setPlaceholder("sk-xxx")
@@ -141,8 +141,8 @@ export class GitSyncSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName("API URL")
-      .setDesc("DeepSeek API endpoint")
+      .setName("API 地址")
+      .setDesc("DeepSeek API 端点地址")
       .addText((text) =>
         text
           .setPlaceholder("https://api.deepseek.com")
@@ -154,8 +154,8 @@ export class GitSyncSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName("LLM Commit Interval")
-      .setDesc("1 = every commit; N = summarize every N commits")
+      .setName("LLM 提交间隔")
+      .setDesc("1 = 每次提交都让 LLM 生成 commit 信息；N = 累积 N 次提交后总结一次")
       .addSlider((slider) =>
         slider
           .setLimits(1, 20, 1)

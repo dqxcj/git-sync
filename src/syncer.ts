@@ -31,9 +31,9 @@ export class Syncer {
   async initRepo(): Promise<void> {
     const exists = await this.git.isRepo();
     if (!exists) {
-      this.emit({ type: "pulling", message: "Cloning..." });
+      this.emit({ type: "pulling", message: "正在克隆..." });
       await this.git.clone();
-      this.emit({ type: "idle", message: "Cloned" });
+      this.emit({ type: "idle", message: "克隆完成" });
       return;
     }
     await this.git.addRemote();
@@ -45,12 +45,12 @@ export class Syncer {
 
     try {
       // 1. Pull
-      this.emit({ type: "pulling", message: "Pulling..." });
+      this.emit({ type: "pulling", message: "正在拉取..." });
       const conflicts = await this.git.pullWithConflictDetection();
 
       // 2. Resolve conflicts
       if (conflicts.length > 0) {
-        this.emit({ type: "conflict", message: `${conflicts.length} conflict(s)` });
+        this.emit({ type: "conflict", message: `${conflicts.length} 个冲突` });
         await this.resolveConflicts(conflicts);
       }
 
@@ -60,16 +60,16 @@ export class Syncer {
 
       if (diff) {
         // 4. Commit
-        this.emit({ type: "committing", message: "Committing..." });
+        this.emit({ type: "committing", message: "正在提交..." });
         const message = await this.generateCommitMessage(diff);
         await this.git.commit(message);
 
         // 5. Push
-        this.emit({ type: "pushing", message: "Pushing..." });
+        this.emit({ type: "pushing", message: "正在推送..." });
         await this.git.push();
       }
 
-      this.emit({ type: "idle", message: "OK" });
+      this.emit({ type: "idle", message: "就绪" });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       this.emit({ type: "error", message: msg });
@@ -80,11 +80,11 @@ export class Syncer {
 
   private async resolveConflicts(conflicts: ConflictFile[]): Promise<void> {
     if (!this.llm.isConfigured()) {
-      throw new Error("LLM not configured, cannot resolve conflicts");
+      throw new Error("未配置 LLM，无法解决冲突");
     }
 
     for (const file of conflicts) {
-      this.emit({ type: "merging", message: `Merging ${file.path}` });
+      this.emit({ type: "merging", message: `正在合并 ${file.path}` });
       const markerPattern = /<<<<<<< HEAD\n([\s\S]*?)=======\n([\s\S]*?)>>>>>>> [^\n]+\n?/g;
       let match: RegExpExecArray | null;
       let result = file.content;

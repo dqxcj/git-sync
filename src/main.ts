@@ -22,7 +22,7 @@ export default class GitSyncPlugin extends Plugin {
     // Manual sync command
     this.addCommand({
       id: "git-sync-now",
-      name: "Sync now",
+      name: "立即同步",
       callback: () => this.syncAll(),
     });
 
@@ -75,7 +75,7 @@ export default class GitSyncPlugin extends Plugin {
     if (this.settings.notesRepo.enabled && this.settings.notesRepo.remoteUrl && this.settings.notesRepo.token) {
       const notesGit = new GitCore(vaultPath, `${vaultPath}/.git`, this.settings.notesRepo.remoteUrl, this.settings.notesRepo.token);
       const notesLlm = new DeepSeekClient(this.settings.deepseekApiKey, this.settings.deepseekUrl);
-      this.notesStatusBar = new StatusBarManager(this.addStatusBarItem(), "Notes");
+      this.notesStatusBar = new StatusBarManager(this.addStatusBarItem(), "笔记");
       this.notesSyncer = new Syncer(notesGit, notesLlm, this.settings.llmCommitInterval, (event) => {
         this.notesStatusBar?.update(event);
       });
@@ -86,7 +86,7 @@ export default class GitSyncPlugin extends Plugin {
       const configDir = `${vaultPath}/.obsidian`;
       const configGit = new GitCore(configDir, `${configDir}/.git`, this.settings.configRepo.remoteUrl, this.settings.configRepo.token);
       const configLlm = new DeepSeekClient(this.settings.deepseekApiKey, this.settings.deepseekUrl);
-      this.configStatusBar = new StatusBarManager(this.addStatusBarItem(), "Config");
+      this.configStatusBar = new StatusBarManager(this.addStatusBarItem(), "配置");
       this.configSyncer = new Syncer(configGit, configLlm, this.settings.llmCommitInterval, (event) => {
         this.configStatusBar?.update(event);
       });
@@ -95,7 +95,7 @@ export default class GitSyncPlugin extends Plugin {
 
   private async syncAll(): Promise<void> {
     if (!this.isConfigured()) {
-      new Notice("Git Sync: Please configure remote URL and token in settings");
+      new Notice("Git 同步：请先在设置中配置远程仓库地址和令牌");
       return;
     }
 
@@ -109,14 +109,14 @@ export default class GitSyncPlugin extends Plugin {
       try {
         await this.notesSyncer.initRepo();
       } catch (e) {
-        new Notice(`Git Sync (notes): init failed - ${e}`);
+        new Notice(`Git 同步（笔记）：初始化失败 - ${e}`);
       }
     }
     if (this.configSyncer) {
       try {
         await this.configSyncer.initRepo();
       } catch (e) {
-        new Notice(`Git Sync (config): init failed - ${e}`);
+        new Notice(`Git 同步（配置）：初始化失败 - ${e}`);
       }
     }
 
