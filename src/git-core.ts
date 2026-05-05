@@ -140,8 +140,9 @@ export class GitCore {
     this.log(`addAll: StatusMatrix 返回 ${status.length} 条, dir=${this.dir}, gitdir=${this.gitdir}`);
     const toAdd: string[] = [];
     for (const [filepath, , worktreeStatus] of status) {
-      // Never add .git internal files (including nested repos)
+      // Never add .git internal files or debug log
       if (filepath.startsWith(".git/") || filepath === ".git" || filepath.includes("/.git/")) continue;
+      if (filepath === ".git-sync-debug.log") continue;
       if (worktreeStatus) {
         toAdd.push(filepath);
       } else if (this.debug) {
@@ -199,6 +200,7 @@ export class GitCore {
       const changedFiles: string[] = [];
       for (const [filepath, headStatus, workdirStatus, stageStatus] of status) {
         if (filepath.startsWith(".git/") || filepath.includes("/.git/")) continue;
+        if (filepath === ".git-sync-debug.log") continue;
         // staged: stageStatus === 0 (after add) or workdirStatus !== headStatus (changed)
         if (stageStatus === 0 || workdirStatus !== headStatus) {
           changedFiles.push(filepath);
