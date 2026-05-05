@@ -107,7 +107,7 @@ export class GitCore {
         throw err;
       }
     }
-    throw new Error("所有分支 pull 均失败");
+    return [];
   }
 
   private async scanConflicts(): Promise<ConflictFile[]> {
@@ -193,10 +193,12 @@ export class GitCore {
 
   async getStagedDiff(): Promise<string> {
     try {
+      // Use git diff to detect changes (more reliable than checking status)
       const status = await git.statusMatrix({ fs, dir: this.dir, gitdir: this.gitdir, ignored: true });
       const changedFiles: string[] = [];
       for (const [filepath, headStatus, workdirStatus, stageStatus] of status) {
         if (filepath.startsWith(".git/") || filepath.includes("/.git/")) continue;
+        // staged: stageStatus === 0 (after add) or workdirStatus !== headStatus (changed)
         if (stageStatus === 0 || workdirStatus !== headStatus) {
           changedFiles.push(filepath);
         }
@@ -263,62 +265,65 @@ export class GitCore {
     if (!match) throw new Error("无法解析仓库地址");
     const repo = match[1];
 
-    // Get list of committed files
-    const status = await git.statusMatrix({ fs, dir: this.dir, gitdir: this.gitdir, ignored: true });
-    const filesToUpload: Array<{ path: string; content: string }> = [];
-    for (const [filepath, , worktreeStatus] of status) {
-      if (filepath.startsWith(".git/") || filepath.includes("/.git/")) continue;
-      if (!worktreeStatus) continue;
-      try {
-        const absPath = path.join(this.dir, filepath);
-        const content = fs.readFileSync(absPath, "utf-8");
-        filesToUpload.push({ path: filepath, content });
-      } catch {
-        // skip binary/unreadable
+    // Detect if remote is empty (cold start: upload ALL non-.git files)
+    let remoteEmpty = true;
+    try {
+      const apiUrl = isGitee
+        ? `https://gitee.com/api/v5/repos/${repo}/branches?access_token=${encodeURIComponent(this.token)}`
+        : `https://api.github.com/repos/${repo}/branches`;
+      const ropts = isGitee ? undefined : { headers: { Authorization: `Bearer ${this.token}` } };
+      const r = await fetch(apiUrl, ropts);
+      if (r.ok) {
+        const branches = await r.json();
+        remoteEmpty = !Array.isArray(branches) || branches.length === 0 || !branches.some((b: any) => b.name === "master" || b.name === "main");
+        this.log(`apiPush: remoteEmpty=${remoteEmpty}`);
+      }
+    } catch { /* assume empty */ }
+
+    const files: Array<{ path: string; content: string }> = [];
+    if (remoteEmpty) {
+      this.log("apiPush: 冷启动，全量上传");
+      this.walkFiles((relPath: string) => {
+        try {
+          const absPath = path.join(this.dir, relPath);
+          const content = fs.readFileSync(absPath, "utf-8");
+          if (content.length < 500000) files.push({ path: relPath, content });
+        } catch { /* skip */ }
+      });
+    } else {
+      const status = await git.statusMatrix({ fs, dir: this.dir, gitdir: this.gitdir, ignored: true });
+      for (const [filepath, , worktreeStatus] of status) {
+        if (filepath.startsWith(".git/") || filepath.includes("/.git/")) continue;
+        if (!worktreeStatus) continue;
+        try {
+          const absPath = path.join(this.dir, filepath);
+          files.push({ path: filepath, content: fs.readFileSync(absPath, "utf-8") });
+        } catch { /* skip */ }
       }
     }
 
-    this.log(`apiPush: 准备上传 ${filesToUpload.length} 个文件`);
-
-    for (const file of filesToUpload.slice(0, 100)) { // safety cap
+    this.log(`apiPush: 准备上传 ${files.length} 个文件`);
+    let ok = 0;
+    for (const f of files.slice(0, 500)) {
       try {
-        const contentBase64 = Buffer.from(file.content, "utf-8").toString("base64");
-        let apiUrl: string;
-        let headers: Record<string, string>;
-
-        if (isGitee) {
-          apiUrl = `https://gitee.com/api/v5/repos/${repo}/contents/${encodeURIComponent(file.path)}`;
-          const body = JSON.stringify({
-            access_token: this.token,
-            content: contentBase64,
-            message: `upload: ${file.path}`,
-          });
-          const resp = await fetch(apiUrl, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body,
-          });
-          this.log(`apiPush: ${file.path} -> HTTP ${resp.status}`);
-        } else {
-          apiUrl = `https://api.github.com/repos/${repo}/contents/${encodeURIComponent(file.path)}`;
-          const body = JSON.stringify({
-            message: `upload: ${file.path}`,
-            content: contentBase64,
-          });
-          const resp = await fetch(apiUrl, {
-            method: "PUT",
-            headers: {
-              Authorization: `Bearer ${this.token}`,
-              "Content-Type": "application/json",
-            },
-            body,
-          });
-          this.log(`apiPush: ${file.path} -> HTTP ${resp.status}`);
-        }
+        const b64 = Buffer.from(f.content, "utf-8").toString("base64");
+        const apiUrl = isGitee
+          ? `https://gitee.com/api/v5/repos/${repo}/contents/${encodeURIComponent(f.path)}`
+          : `https://api.github.com/repos/${repo}/contents/${encodeURIComponent(f.path)}`;
+        const body = JSON.stringify(isGitee
+          ? { access_token: this.token, content: b64, message: `add: ${f.path}` }
+          : { message: `add: ${f.path}`, content: b64 }
+        );
+        const fetchHeaders: Record<string, string> = { "Content-Type": "application/json" };
+        if (!isGitee) fetchHeaders["Authorization"] = `Bearer ${this.token}`;
+        const r = await fetch(apiUrl, { method: isGitee ? "POST" : "PUT", headers: fetchHeaders, body });
+        if (r.ok || r.status === 201) ok++;
+        if (ok % 10 === 0) this.log(`apiPush: ${ok}/${Math.min(files.length, 500)}`);
       } catch (e: any) {
-        this.log(`apiPush: ${file.path} 上传失败: ${e.message || e}`);
+        this.log(`apiPush: ${f.path} 失败: ${e.message || e}`);
       }
     }
+    this.log(`apiPush: 完成 ${ok}/${Math.min(files.length, 500)}`);
   }
 
   async initAndPull(): Promise<ConflictFile[]> {

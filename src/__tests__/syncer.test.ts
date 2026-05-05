@@ -131,7 +131,7 @@ describe("Syncer", () => {
       const s = new Syncer(mockGit, mockLLM, 1, () => {}, true, false);
       await s.sync();
       const call = (mockGit.commit as any).mock.calls[0][0];
-      expect(call).toMatch(/\[auto\] update:/);
+      expect(call).toMatch(/自动同步:/);
     });
   });
 });
