@@ -60,13 +60,17 @@ export class Syncer {
     this.log("sync: ====== 开始 ======");
 
     try {
-      // 1. Pull
+      // 1. Pull (best-effort, don't block other operations)
       if (this.hasRemote) {
         this.emit({ type: "pulling", message: "正在拉取..." });
-        const conflicts = await this.git.pullWithConflictDetection();
-        if (conflicts.length > 0) {
-          this.emit({ type: "conflict", message: `${conflicts.length} 个冲突` });
-          await this.resolveConflicts(conflicts);
+        try {
+          const conflicts = await this.git.pullWithConflictDetection();
+          if (conflicts.length > 0) {
+            this.emit({ type: "conflict", message: `${conflicts.length} 个冲突` });
+            await this.resolveConflicts(conflicts);
+          }
+        } catch (e: unknown) {
+          this.log(`sync: pull失败 — ${e instanceof Error ? e.message : e}`);
         }
       }
 

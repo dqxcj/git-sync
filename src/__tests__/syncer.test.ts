@@ -16,6 +16,7 @@ vi.mock("../deepseek", () => ({
 function createMockGit(overrides: Partial<any> = {}) {
   return {
     isRepo: vi.fn().mockResolvedValue(true),
+    hasChanges: vi.fn().mockResolvedValue(true),
     initAndPull: vi.fn().mockResolvedValue([]),
     pullWithConflictDetection: vi.fn().mockResolvedValue([]),
     addAll: vi.fn().mockResolvedValue(undefined),
