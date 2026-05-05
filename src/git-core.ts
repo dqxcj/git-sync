@@ -43,9 +43,19 @@ export class GitCore {
 
   async addRemote(): Promise<void> {
     const remotes = await git.listRemotes({ fs, dir: this.dir, gitdir: this.gitdir });
-    const hasOrigin = remotes.some((r) => r.remote === "origin");
-    if (!hasOrigin) {
+    const existing = remotes.find((r) => r.remote === "origin");
+    if (existing) {
+      // Update if URL differs from configured
+      if (existing.url !== this.remoteUrl) {
+        this.log(`addRemote: 更新 origin URL: ${existing.url} -> ${this.remoteUrl}`);
+        await git.deleteRemote({ fs, dir: this.dir, gitdir: this.gitdir, remote: "origin" });
+        await git.addRemote({ fs, dir: this.dir, gitdir: this.gitdir, remote: "origin", url: this.remoteUrl });
+      } else {
+        this.log(`addRemote: origin 已存在, URL匹配`);
+      }
+    } else {
       await git.addRemote({ fs, dir: this.dir, gitdir: this.gitdir, remote: "origin", url: this.remoteUrl });
+      this.log(`addRemote: 添加 origin -> ${this.remoteUrl}`);
     }
   }
 
