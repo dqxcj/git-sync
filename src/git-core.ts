@@ -221,13 +221,76 @@ export class GitCore {
         url: this.authUrl(),
         ref: "main",
       });
+      this.log("push: git push 成功");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes("unpack ok")) {
-        this.log("push: unpack ok parse error, push likely succeeded");
-        return;
+      this.log(`push: git push 失败 (${msg}), 尝试API上传`);
+      await this.apiPush();
+    }
+  }
+
+  private async apiPush(): Promise<void> {
+    const clean = this.remoteUrl.replace(/\.git$/, "").replace(/\/$/, "");
+    const isGitee = clean.includes("gitee.com");
+    const match = clean.match(/(?:github\.com|gitee\.com)[:\/]([^\/]+\/[^\/]+)$/);
+    if (!match) throw new Error("无法解析仓库地址");
+    const repo = match[1];
+
+    // Get list of committed files
+    const status = await git.statusMatrix({ fs, dir: this.dir, gitdir: this.gitdir, ignored: true });
+    const filesToUpload: Array<{ path: string; content: string }> = [];
+    for (const [filepath, , worktreeStatus] of status) {
+      if (filepath.startsWith(".git/") || filepath.includes("/.git/")) continue;
+      if (!worktreeStatus) continue;
+      try {
+        const absPath = path.join(this.dir, filepath);
+        const content = fs.readFileSync(absPath, "utf-8");
+        filesToUpload.push({ path: filepath, content });
+      } catch {
+        // skip binary/unreadable
       }
-      throw err;
+    }
+
+    this.log(`apiPush: 准备上传 ${filesToUpload.length} 个文件`);
+
+    for (const file of filesToUpload.slice(0, 100)) { // safety cap
+      try {
+        const contentBase64 = Buffer.from(file.content, "utf-8").toString("base64");
+        let apiUrl: string;
+        let headers: Record<string, string>;
+
+        if (isGitee) {
+          apiUrl = `https://gitee.com/api/v5/repos/${repo}/contents/${encodeURIComponent(file.path)}`;
+          const body = JSON.stringify({
+            access_token: this.token,
+            content: contentBase64,
+            message: `upload: ${file.path}`,
+          });
+          const resp = await fetch(apiUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body,
+          });
+          this.log(`apiPush: ${file.path} -> HTTP ${resp.status}`);
+        } else {
+          apiUrl = `https://api.github.com/repos/${repo}/contents/${encodeURIComponent(file.path)}`;
+          const body = JSON.stringify({
+            message: `upload: ${file.path}`,
+            content: contentBase64,
+          });
+          const resp = await fetch(apiUrl, {
+            method: "PUT",
+            headers: {
+              Authorization: `Bearer ${this.token}`,
+              "Content-Type": "application/json",
+            },
+            body,
+          });
+          this.log(`apiPush: ${file.path} -> HTTP ${resp.status}`);
+        }
+      } catch (e: any) {
+        this.log(`apiPush: ${file.path} 上传失败: ${e.message || e}`);
+      }
     }
   }
 
