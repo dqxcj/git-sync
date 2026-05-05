@@ -66,8 +66,11 @@ export class Syncer {
     this.log("sync: ====== 开始 ======");
     this.log(`sync: hasRemote=${this.hasRemote}, debug=${this.debug}`);
 
-    try {
-      if (this.hasRemote) {
+    let pullError: string | null = null;
+
+    // Pull (best-effort, failure should not block local commit)
+    if (this.hasRemote) {
+      try {
         this.emit({ type: "pulling", message: "正在拉取..." });
         this.log("sync: 开始 pull");
         const conflicts = await this.git.pullWithConflictDetection();
@@ -79,10 +82,16 @@ export class Syncer {
           await this.resolveConflicts(conflicts);
           this.log("sync: 冲突已解决");
         }
-      } else {
-        this.log("sync: 跳过pull (无远程认证)");
+      } catch (err: unknown) {
+        pullError = err instanceof Error ? err.message : String(err);
+        this.log(`sync: pull失败 (继续本地操作): ${pullError}`);
       }
+    } else {
+      this.log("sync: 跳过pull (无远程认证)");
+    }
 
+    // Commit (always run, even if pull failed)
+    try {
       this.emit({ type: "committing", message: "检查变更..." });
       this.log("sync: 开始 addAll");
       await this.git.addAll();
@@ -97,27 +106,32 @@ export class Syncer {
         const sha = await this.git.commit(message);
         this.log(`sync: commit完成, sha=${sha}`);
 
+        // Push (best-effort)
         if (this.hasRemote) {
-          this.emit({ type: "pushing", message: "正在推送..." });
-          this.log("sync: 开始 push");
-          await this.git.push();
-          this.log("sync: push完成");
+          try {
+            this.emit({ type: "pushing", message: "正在推送..." });
+            this.log("sync: 开始 push");
+            await this.git.push();
+            this.log("sync: push完成");
+          } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err);
+            this.log(`sync: push失败: ${msg}`);
+          }
         } else {
           this.log("sync: 跳过push (无远程认证)");
         }
       } else {
         this.log("sync: 无变更, 跳过commit");
       }
-
-      this.emit({ type: "idle", message: this.hasRemote ? "就绪" : "本地就绪" });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      this.log(`sync: 异常! ${err instanceof Error ? err.stack : String(err)}`);
+      this.log(`sync: commit/push异常! ${err instanceof Error ? err.stack : String(err)}`);
       this.emit({ type: "error", message: msg });
-    } finally {
-      this.log("sync: ====== 结束 ======");
-      this.running = false;
     }
+
+    this.emit({ type: "idle", message: pullError ? "拉取失败，本地已提交" : "就绪" });
+    this.log("sync: ====== 结束 ======");
+    this.running = false;
   }
 
   private async resolveConflicts(conflicts: ConflictFile[]): Promise<void> {
