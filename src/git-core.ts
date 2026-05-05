@@ -226,104 +226,32 @@ export class GitCore {
   }
 
   async push(): Promise<void> {
-    // Try main first, then master (Gitee default)
-    const branches = ["main", "master"];
-    for (const branch of branches) {
+    // Push local main to remote — try both remote branch names
+    const targets = [
+      { ref: "main" },
+      { ref: "main", remoteRef: "refs/heads/master" },
+    ];
+    for (const opts of targets) {
       try {
         await git.push({
-          fs,
-          http,
-          dir: this.dir,
-          gitdir: this.gitdir,
+          fs, http,
+          dir: this.dir, gitdir: this.gitdir,
           url: this.authUrl(),
-          ref: branch,
-          force: false,
+          force: true,
+          ...opts,
         });
-        this.log(`push: ${branch} 成功`);
+        this.log(`push: main -> ${opts.remoteRef || "main"} 成功`);
         return;
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         if (msg.includes("unpack ok")) {
-          this.log(`push: ${branch} unpack ok parse error, assuming success`);
+          this.log(`push: 成功 (unpack ok)`);
           return;
         }
-        if (msg.includes("Could not find") || msg.includes("Not Found") || msg.includes("Couldn't find")) {
-          this.log(`push: ${branch} 不存在, 尝试下一个`);
-          continue;
-        }
-        throw err;
+        this.log(`push: main -> ${opts.remoteRef || "main"} 失败: ${msg.substring(0, 80)}`);
       }
     }
-    this.log("push: git push 全部失败, 尝试API上传");
-    await this.apiPush();
-  }
-
-  private async apiPush(): Promise<void> {
-    const clean = this.remoteUrl.replace(/\.git$/, "").replace(/\/$/, "");
-    const isGitee = clean.includes("gitee.com");
-    const match = clean.match(/(?:github\.com|gitee\.com)[:\/]([^\/]+\/[^\/]+)$/);
-    if (!match) throw new Error("无法解析仓库地址");
-    const repo = match[1];
-
-    // Detect if remote is empty (cold start: upload ALL non-.git files)
-    let remoteEmpty = true;
-    try {
-      const apiUrl = isGitee
-        ? `https://gitee.com/api/v5/repos/${repo}/branches?access_token=${encodeURIComponent(this.token)}`
-        : `https://api.github.com/repos/${repo}/branches`;
-      const ropts = isGitee ? undefined : { headers: { Authorization: `Bearer ${this.token}` } };
-      const r = await fetch(apiUrl, ropts);
-      if (r.ok) {
-        const branches = await r.json();
-        remoteEmpty = !Array.isArray(branches) || branches.length === 0 || !branches.some((b: any) => b.name === "master" || b.name === "main");
-        this.log(`apiPush: remoteEmpty=${remoteEmpty}`);
-      }
-    } catch { /* assume empty */ }
-
-    const files: Array<{ path: string; content: string }> = [];
-    if (remoteEmpty) {
-      this.log("apiPush: 冷启动，全量上传");
-      this.walkFiles((relPath: string) => {
-        try {
-          const absPath = path.join(this.dir, relPath);
-          const content = fs.readFileSync(absPath, "utf-8");
-          if (content.length < 500000) files.push({ path: relPath, content });
-        } catch { /* skip */ }
-      });
-    } else {
-      const status = await git.statusMatrix({ fs, dir: this.dir, gitdir: this.gitdir, ignored: true });
-      for (const [filepath, , worktreeStatus] of status) {
-        if (filepath.startsWith(".git/") || filepath.includes("/.git/")) continue;
-        if (!worktreeStatus) continue;
-        try {
-          const absPath = path.join(this.dir, filepath);
-          files.push({ path: filepath, content: fs.readFileSync(absPath, "utf-8") });
-        } catch { /* skip */ }
-      }
-    }
-
-    this.log(`apiPush: 准备上传 ${files.length} 个文件`);
-    let ok = 0;
-    for (const f of files.slice(0, 500)) {
-      try {
-        const b64 = Buffer.from(f.content, "utf-8").toString("base64");
-        const apiUrl = isGitee
-          ? `https://gitee.com/api/v5/repos/${repo}/contents/${encodeURIComponent(f.path)}`
-          : `https://api.github.com/repos/${repo}/contents/${encodeURIComponent(f.path)}`;
-        const body = JSON.stringify(isGitee
-          ? { access_token: this.token, content: b64, message: `add: ${f.path}` }
-          : { message: `add: ${f.path}`, content: b64 }
-        );
-        const fetchHeaders: Record<string, string> = { "Content-Type": "application/json" };
-        if (!isGitee) fetchHeaders["Authorization"] = `Bearer ${this.token}`;
-        const r = await fetch(apiUrl, { method: isGitee ? "POST" : "PUT", headers: fetchHeaders, body });
-        if (r.ok || r.status === 201) ok++;
-        if (ok % 10 === 0) this.log(`apiPush: ${ok}/${Math.min(files.length, 500)}`);
-      } catch (e: any) {
-        this.log(`apiPush: ${f.path} 失败: ${e.message || e}`);
-      }
-    }
-    this.log(`apiPush: 完成 ${ok}/${Math.min(files.length, 500)}`);
+    throw new Error("push 失败: 无法推送到远程");
   }
 
   async initAndPull(): Promise<ConflictFile[]> {
