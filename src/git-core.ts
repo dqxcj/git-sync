@@ -23,7 +23,7 @@ export class GitCore {
 
   async isRepo(): Promise<boolean> {
     try {
-      await git.log({ fs, dir: this.dir, gitdir: this.gitdir, depth: 1 });
+      fs.statSync(path.join(this.gitdir, "HEAD"));
       return true;
     } catch {
       return false;
@@ -95,13 +95,37 @@ export class GitCore {
 
   async addAll(): Promise<void> {
     const status = await git.statusMatrix({ fs, dir: this.dir, gitdir: this.gitdir, ignored: true });
-    await Promise.all(
-      status.map(([filepath, , worktreeStatus]) => {
-        if (worktreeStatus) {
-          return git.add({ fs, dir: this.dir, gitdir: this.gitdir, filepath });
-        }
-      })
-    );
+    const toAdd: string[] = [];
+    for (const [filepath, , worktreeStatus] of status) {
+      if (worktreeStatus) {
+        toAdd.push(filepath);
+      }
+    }
+
+    // Fallback for brand-new repos without HEAD: walk directory manually
+    if (toAdd.length === 0) {
+      this.walkFiles((relPath) => toAdd.push(relPath));
+    }
+
+    if (toAdd.length > 0) {
+      await Promise.all(
+        toAdd.map((f) => git.add({ fs, dir: this.dir, gitdir: this.gitdir, filepath: f }))
+      );
+    }
+  }
+
+  private walkFiles(cb: (relPath: string) => void, subDir: string = ""): void {
+    const base = path.join(this.dir, subDir);
+    const entries = fs.readdirSync(base, { withFileTypes: true });
+    for (const entry of entries) {
+      const relPath = subDir ? path.join(subDir, entry.name) : entry.name;
+      if (entry.name === ".git" || entry.name === ".obsidian") continue;
+      if (entry.isDirectory()) {
+        this.walkFiles(cb, relPath);
+      } else {
+        cb(relPath);
+      }
+    }
   }
 
   async commit(message: string): Promise<string> {
@@ -117,23 +141,29 @@ export class GitCore {
 
   async getStagedDiff(): Promise<string> {
     try {
-      const stagedFiles: string[] = [];
-      const status = await git.statusMatrix({ fs, dir: this.dir, gitdir: this.gitdir });
-      for (const [filepath, headStatus, , stageStatus] of status) {
-        if (stageStatus === 0 || headStatus !== stageStatus) {
-          stagedFiles.push(filepath);
+      // Use git diff to detect changes (more reliable than checking status)
+      const status = await git.statusMatrix({ fs, dir: this.dir, gitdir: this.gitdir, ignored: true });
+      const changedFiles: string[] = [];
+      for (const [filepath, headStatus, workdirStatus, stageStatus] of status) {
+        // staged: stageStatus === 0 (after add) or workdirStatus !== headStatus (changed)
+        if (stageStatus === 0 || workdirStatus !== headStatus) {
+          changedFiles.push(filepath);
         }
       }
-      if (stagedFiles.length === 0) return "";
+
+      // Fallback for new repo: just check if any files were added
+      if (changedFiles.length === 0) return "";
 
       let diff = "";
-      for (const filepath of stagedFiles) {
+      for (const filepath of changedFiles) {
         try {
           const absPath = path.join(this.dir, filepath);
-          const content = fs.readFileSync(absPath, "utf-8");
-          diff += `\n--- a/${filepath}\n+++ b/${filepath}\n${content}\n`;
+          if (fs.existsSync(absPath)) {
+            const content = fs.readFileSync(absPath, "utf-8");
+            diff += `\n${filepath} (${content.length} bytes)\n`;
+          }
         } catch {
-          // skip binary
+          // skip binary or unreadable
         }
       }
       return diff;
