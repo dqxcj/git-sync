@@ -34,12 +34,14 @@ export class Syncer {
   async initRepo(): Promise<void> {
     const exists = await this.git.isRepo();
     if (!exists) {
-      this.emit({ type: "pulling", message: "正在克隆..." });
-      await this.git.clone();
-      this.emit({ type: "idle", message: "克隆完成" });
-      return;
+      this.emit({ type: "pulling", message: "正在初始化..." });
     }
-    await this.git.addRemote();
+    const conflicts = await this.git.initAndPull();
+    if (conflicts.length > 0) {
+      this.emit({ type: "conflict", message: `${conflicts.length} 个冲突` });
+      await this.resolveConflicts(conflicts);
+    }
+    this.emit({ type: "idle", message: exists ? "就绪" : "初始化完成" });
   }
 
   async sync(): Promise<void> {

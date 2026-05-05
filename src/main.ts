@@ -54,10 +54,8 @@ export default class GitSyncPlugin extends Plugin {
       this.configSyncer?.startTimer(this.settings.timerInterval);
     }
 
-    // Startup — trigger immediately
-    if (strategy === "startup-shutdown" || strategy === "all") {
-      setTimeout(() => this.syncAll(), 2000);
-    }
+    // Always trigger initial sync (cold start: init repo, pull from remote, or push local content)
+    setTimeout(() => this.syncAll(), 2000);
 
     // Shutdown (save on unload)
     if (strategy === "startup-shutdown" || strategy === "all") {

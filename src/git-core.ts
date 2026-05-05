@@ -154,16 +154,17 @@ export class GitCore {
     });
   }
 
-  async clone(): Promise<void> {
-    await git.clone({
-      fs,
-      http,
-      dir: this.dir,
-      gitdir: this.gitdir,
-      url: this.remoteUrl,
-      singleBranch: true,
-      depth: 1,
-      headers: this.authHeaders(),
-    });
+  async initAndPull(): Promise<ConflictFile[]> {
+    const exists = await this.isRepo();
+    if (!exists) {
+      await git.init({ fs, dir: this.dir, gitdir: this.gitdir, defaultBranch: "main" });
+    }
+    await this.addRemote();
+    try {
+      return await this.pullWithConflictDetection();
+    } catch {
+      // Remote may be empty (new repo) — that's fine, sync() will push later
+      return [];
+    }
   }
 }
