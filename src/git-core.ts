@@ -227,29 +227,36 @@ export class GitCore {
   }
 
   async push(): Promise<void> {
-    // Gitee default is master, GitHub default is main
     const isGitee = this.remoteUrl.includes("gitee.com");
     const targets = isGitee
       ? [{ ref: "main", remoteRef: "refs/heads/master" }, { ref: "main" }]
       : [{ ref: "main" }, { ref: "main", remoteRef: "refs/heads/master" }];
-    for (const opts of targets) {
-      try {
-        await git.push({
-          fs, http,
-          dir: this.dir, gitdir: this.gitdir,
-          url: this.authUrl(),
-          force: true,
-          ...opts,
-        });
-        this.log(`push: main -> ${opts.remoteRef || "main"} 成功`);
-        return;
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : String(err);
-        if (msg.includes("unpack ok")) {
-          this.log(`push: 成功 (unpack ok)`);
+
+    // Try normal push first (safe, won't overwrite others' work)
+    for (const force of [false, true]) {
+      for (const opts of targets) {
+        try {
+          await git.push({
+            fs, http,
+            dir: this.dir, gitdir: this.gitdir,
+            url: this.authUrl(),
+            force,
+            ...opts,
+          });
+          this.log(`push: main -> ${opts.remoteRef || "main"} ${force ? "(force)" : ""} 成功`);
           return;
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err);
+          if (msg.includes("unpack ok")) {
+            this.log(`push: 成功 (unpack ok)`);
+            return;
+          }
+          if (msg.includes("fast-forward") || msg.includes("rejected")) {
+            this.log(`push: 非快进被拒, 将尝试 force`);
+            break; // Break inner loop, try with force
+          }
+          this.log(`push: main -> ${opts.remoteRef || "main"} 失败: ${msg.substring(0, 80)}`);
         }
-        this.log(`push: main -> ${opts.remoteRef || "main"} 失败: ${msg.substring(0, 80)}`);
       }
     }
     throw new Error("push 失败: 无法推送到远程");
