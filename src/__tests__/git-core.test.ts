@@ -18,7 +18,7 @@ describe("GitCore", () => {
     fs.writeFileSync(path.join(testDir, "note2.md"), "# Test Note 2", "utf-8");
     fs.writeFileSync(path.join(testDir, "test-dir", "sub.md"), "# Sub", "utf-8");
 
-    git = new GitCore(testDir, path.join(testDir, ".git"), remoteUrl, token, true);
+    git = new GitCore(testDir, path.join(testDir, ".git"), remoteUrl, token, true, fs);
   });
 
   afterEach(() => {
@@ -62,7 +62,7 @@ describe("GitCore", () => {
       // First add with old URL
       await git.addRemote();
       // Create new git with different URL
-      const newGit = new GitCore(testDir, path.join(testDir, ".git"), "https://gitee.com/testuser/new-repo.git", token, true);
+      const newGit = new GitCore(testDir, path.join(testDir, ".git"), "https://gitee.com/testuser/new-repo.git", token, true, fs);
       await newGit.addRemote();
 
       const remotes = await newGit.listRemotes();
@@ -105,7 +105,7 @@ describe("GitCore", () => {
     it("should extract username from Gitee URL", async () => {
       // Test indirectly through the auth callback
       // Gitee URL format: https://gitee.com/USERNAME/repo.git
-      const giteeGit = new GitCore(testDir, path.join(testDir, ".git"), "https://gitee.com/myuser/my-repo.git", token);
+      const giteeGit = new GitCore(testDir, path.join(testDir, ".git"), "https://gitee.com/myuser/my-repo.git", token, false, fs);
       // The username should be extracted as "myuser" from the URL
       // This is tested via the onAuth private method, but we can only test indirectly
     });
