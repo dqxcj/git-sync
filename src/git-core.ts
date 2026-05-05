@@ -71,30 +71,43 @@ export class GitCore {
     }
   }
 
-  private async doPull(): Promise<void> {
+  private async doPull(branch: string): Promise<void> {
     await git.pull({
       fs,
       http,
       dir: this.dir,
       gitdir: this.gitdir,
       url: this.authUrl(),
-      ref: "main",
+      ref: branch,
       singleBranch: true,
       author: { name: "Obsidian Git Sync", email: "sync@obsidian.local" },
     });
   }
 
   async pullWithConflictDetection(): Promise<ConflictFile[]> {
-    try {
-      await this.doPull();
-      return [];
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes("Merge conflict") || msg.includes("CONFLICT")) {
-        return await this.scanConflicts();
+    // Try main first, then master (Gitee default)
+    for (const branch of ["main", "master"]) {
+      try {
+        await this.doPull(branch);
+        this.log(`pull: ${branch} 成功`);
+        return [];
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.includes("Merge conflict") || msg.includes("CONFLICT")) {
+          return await this.scanConflicts();
+        }
+        if (msg.includes("Could not find") || msg.includes("Not Found") || msg.includes("Couldn't find")) {
+          this.log(`pull: ${branch} 不存在, 尝试下一个`);
+          continue;
+        }
+        if (msg.includes("401") || msg.includes("403")) {
+          this.log(`pull: ${branch} 认证失败: ${msg.substring(0, 50)}`);
+          continue;
+        }
+        throw err;
       }
-      throw err;
     }
+    throw new Error("所有分支 pull 均失败");
   }
 
   private async scanConflicts(): Promise<ConflictFile[]> {
@@ -212,21 +225,36 @@ export class GitCore {
   }
 
   async push(): Promise<void> {
-    try {
-      await git.push({
-        fs,
-        http,
-        dir: this.dir,
-        gitdir: this.gitdir,
-        url: this.authUrl(),
-        ref: "main",
-      });
-      this.log("push: git push 成功");
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      this.log(`push: git push 失败 (${msg}), 尝试API上传`);
-      await this.apiPush();
+    // Try main first, then master (Gitee default)
+    const branches = ["main", "master"];
+    for (const branch of branches) {
+      try {
+        await git.push({
+          fs,
+          http,
+          dir: this.dir,
+          gitdir: this.gitdir,
+          url: this.authUrl(),
+          ref: branch,
+          force: false,
+        });
+        this.log(`push: ${branch} 成功`);
+        return;
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.includes("unpack ok")) {
+          this.log(`push: ${branch} unpack ok parse error, assuming success`);
+          return;
+        }
+        if (msg.includes("Could not find") || msg.includes("Not Found") || msg.includes("Couldn't find")) {
+          this.log(`push: ${branch} 不存在, 尝试下一个`);
+          continue;
+        }
+        throw err;
+      }
     }
+    this.log("push: git push 全部失败, 尝试API上传");
+    await this.apiPush();
   }
 
   private async apiPush(): Promise<void> {
