@@ -25,7 +25,9 @@ export class GitCore {
   }
 
   private onAuth() {
-    return { username: "oauth2", password: this.token };
+    // Gitee uses token as password, username can be anything
+    // GitHub also accepts token as username with empty password
+    return { username: this.token, password: "" };
   }
 
   async isRepo(): Promise<boolean> {
@@ -115,6 +117,8 @@ export class GitCore {
     this.log(`addAll: StatusMatrix 返回 ${status.length} 条, dir=${this.dir}, gitdir=${this.gitdir}`);
     const toAdd: string[] = [];
     for (const [filepath, , worktreeStatus] of status) {
+      // Never add .git internal files
+      if (filepath.startsWith(".git/") || filepath === ".git") continue;
       if (worktreeStatus) {
         toAdd.push(filepath);
       } else if (this.debug) {
