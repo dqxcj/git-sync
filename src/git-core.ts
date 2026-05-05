@@ -85,8 +85,9 @@ export class GitCore {
   }
 
   async pullWithConflictDetection(): Promise<ConflictFile[]> {
-    // Try main first, then master (Gitee default)
-    for (const branch of ["main", "master"]) {
+    const isGitee = this.remoteUrl.includes("gitee.com");
+    const branches = isGitee ? ["master", "main"] : ["main", "master"];
+    for (const branch of branches) {
       try {
         await this.doPull(branch);
         this.log(`pull: ${branch} 成功`);
@@ -226,11 +227,11 @@ export class GitCore {
   }
 
   async push(): Promise<void> {
-    // Push local main to remote — try both remote branch names
-    const targets = [
-      { ref: "main" },
-      { ref: "main", remoteRef: "refs/heads/master" },
-    ];
+    // Gitee default is master, GitHub default is main
+    const isGitee = this.remoteUrl.includes("gitee.com");
+    const targets = isGitee
+      ? [{ ref: "main", remoteRef: "refs/heads/master" }, { ref: "main" }]
+      : [{ ref: "main" }, { ref: "main", remoteRef: "refs/heads/master" }];
     for (const opts of targets) {
       try {
         await git.push({
