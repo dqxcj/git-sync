@@ -17,6 +17,7 @@ export interface PluginSettings {
   deepseekApiKey: string;
   deepseekUrl: string;
   deepseekModel: string;
+  debugMode: boolean;
 }
 
 export const DEFAULT_SETTINGS: PluginSettings = {
@@ -28,6 +29,7 @@ export const DEFAULT_SETTINGS: PluginSettings = {
   deepseekApiKey: "",
   deepseekUrl: "https://api.deepseek.com",
   deepseekModel: "deepseek-v4-flash",
+  debugMode: false,
 };
 
 export interface DeepSeekMessage {

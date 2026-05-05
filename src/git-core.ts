@@ -3,18 +3,25 @@ import * as fs from "fs";
 import * as path from "path";
 import http from "isomorphic-git/http/node";
 import { ConflictFile } from "./types";
+import { debugLog } from "./logger";
 
 export class GitCore {
   private dir: string;
   private gitdir: string;
   private remoteUrl: string;
   private token: string;
+  private debug: boolean;
 
-  constructor(dir: string, gitdir: string, remoteUrl: string, token: string) {
+  constructor(dir: string, gitdir: string, remoteUrl: string, token: string, debug: boolean = false) {
     this.dir = dir;
     this.gitdir = gitdir;
     this.remoteUrl = remoteUrl;
     this.token = token;
+    this.debug = debug;
+  }
+
+  private log(msg: string): void {
+    debugLog(this.debug, msg);
   }
 
   private onAuth() {
@@ -95,22 +102,31 @@ export class GitCore {
 
   async addAll(): Promise<void> {
     const status = await git.statusMatrix({ fs, dir: this.dir, gitdir: this.gitdir, ignored: true });
+    this.log(`addAll: StatusMatrix 返回 ${status.length} 条, dir=${this.dir}, gitdir=${this.gitdir}`);
     const toAdd: string[] = [];
     for (const [filepath, , worktreeStatus] of status) {
       if (worktreeStatus) {
         toAdd.push(filepath);
+      } else if (this.debug) {
+        this.log(`addAll: 跳过 ${filepath} (worktreeStatus=${worktreeStatus})`);
       }
     }
 
     // Fallback for brand-new repos without HEAD: walk directory manually
     if (toAdd.length === 0) {
-      this.walkFiles((relPath) => toAdd.push(relPath));
+      this.log("addAll: statusMatrix empty, walking directory");
+      this.walkFiles((relPath) => {
+        toAdd.push(relPath);
+        this.log(`addAll: walk发现 ${relPath}`);
+      });
     }
 
+    this.log(`addAll: 准备添加 ${toAdd.length} 个文件: ${toAdd.slice(0, 10).join(", ")}`);
     if (toAdd.length > 0) {
       await Promise.all(
         toAdd.map((f) => git.add({ fs, dir: this.dir, gitdir: this.gitdir, filepath: f }))
       );
+      this.log("addAll: git.add 完成");
     }
   }
 

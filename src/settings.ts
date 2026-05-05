@@ -226,6 +226,21 @@ export class GitSyncSettingTab extends PluginSettingTab {
           })
       );
 
+    // --- Debug ---
+    containerEl.createEl("h3", { text: "调试" });
+
+    new Setting(containerEl)
+      .setName("调试模式")
+      .setDesc("开启后同步过程会输出详细日志，通过命令面板「查看调试日志」查看")
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.debugMode)
+          .onChange(async (value) => {
+            this.plugin.settings.debugMode = value;
+            await this.plugin.saveSettings();
+          })
+      );
+
     new Setting(containerEl)
       .setName("LLM 提交间隔")
       .setDesc("1 = 每次提交都让 LLM 生成 commit 信息；N = 累积 N 次提交后总结一次")

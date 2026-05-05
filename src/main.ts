@@ -5,6 +5,7 @@ import { DeepSeekClient } from "./deepseek";
 import { GitSyncSettingTab } from "./settings";
 import { StatusBarManager } from "./status-bar";
 import { DEFAULT_SETTINGS, PluginSettings, SyncStrategy } from "./types";
+import { getLogs, clearLogs } from "./logger";
 
 export default class GitSyncPlugin extends Plugin {
   settings: PluginSettings;
@@ -24,6 +25,22 @@ export default class GitSyncPlugin extends Plugin {
       id: "git-sync-now",
       name: "立即同步",
       callback: () => this.syncAll(),
+    });
+
+    // View debug logs
+    this.addCommand({
+      id: "git-sync-logs",
+      name: "查看调试日志",
+      callback: () => {
+        const logs = getLogs();
+        if (logs.length === 0) {
+          new Notice("暂无日志。请在设置中开启调试模式后执行同步。");
+          return;
+        }
+        // Show last 30 lines
+        const recent = logs.slice(-30).join("\n");
+        new Notice(`日志(最近30条，完整日志见控制台 Ctrl+Shift+I)：\n${recent}`, 0);
+      },
     });
 
     // Apply sync strategy
@@ -72,25 +89,25 @@ export default class GitSyncPlugin extends Plugin {
 
     // Notes repo
     if (this.settings.notesRepo.enabled && this.settings.notesRepo.remoteUrl) {
-      const notesGit = new GitCore(vaultPath, `${vaultPath}/.git`, this.settings.notesRepo.remoteUrl, this.settings.notesRepo.token);
+      const notesGit = new GitCore(vaultPath, `${vaultPath}/.git`, this.settings.notesRepo.remoteUrl, this.settings.notesRepo.token, this.settings.debugMode);
       const notesLlm = new DeepSeekClient(this.settings.deepseekApiKey, this.settings.deepseekUrl, this.settings.deepseekModel);
       this.notesStatusBar = new StatusBarManager(this.addStatusBarItem(), "笔记");
       this.notesSyncer = new Syncer(notesGit, notesLlm, this.settings.llmCommitInterval, (event) => {
         this.notesStatusBar?.update(event);
         if (event.type === "committing") new Notice(`Git 同步：${event.message}`);
-      }, this.hasRemoteAuth());
+      }, this.hasRemoteAuth(), this.settings.debugMode);
     }
 
     // Config repo
     if (this.settings.configRepo.enabled && this.settings.configRepo.remoteUrl) {
       const configDir = `${vaultPath}/.obsidian`;
-      const configGit = new GitCore(configDir, `${configDir}/.git`, this.settings.configRepo.remoteUrl, this.settings.configRepo.token);
+      const configGit = new GitCore(configDir, `${configDir}/.git`, this.settings.configRepo.remoteUrl, this.settings.configRepo.token, this.settings.debugMode);
       const configLlm = new DeepSeekClient(this.settings.deepseekApiKey, this.settings.deepseekUrl, this.settings.deepseekModel);
       this.configStatusBar = new StatusBarManager(this.addStatusBarItem(), "配置");
       this.configSyncer = new Syncer(configGit, configLlm, this.settings.llmCommitInterval, (event) => {
         this.configStatusBar?.update(event);
         if (event.type === "committing") new Notice(`Git 同步（配置）：${event.message}`);
-      }, !!(this.settings.configRepo.token));
+      }, !!(this.settings.configRepo.token), this.settings.debugMode);
     }
   }
 
