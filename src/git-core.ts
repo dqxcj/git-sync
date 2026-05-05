@@ -47,6 +47,10 @@ export class GitCore {
     await git.init({ fs, dir: this.dir, gitdir: this.gitdir, defaultBranch: "main" });
   }
 
+  async listRemotes(): Promise<Array<{ remote: string; url: string }>> {
+    return await git.listRemotes({ fs, dir: this.dir, gitdir: this.gitdir });
+  }
+
   async addRemote(): Promise<void> {
     const remotes = await git.listRemotes({ fs, dir: this.dir, gitdir: this.gitdir });
     const existing = remotes.find((r) => r.remote === "origin");
@@ -207,15 +211,25 @@ export class GitCore {
   }
 
   async push(): Promise<void> {
-    await git.push({
-      fs,
-      http,
-      dir: this.dir,
-      gitdir: this.gitdir,
-      remote: "origin",
-      ref: "main",
-      onAuth: () => this.onAuth(),
-    });
+    try {
+      await git.push({
+        fs,
+        http,
+        dir: this.dir,
+        gitdir: this.gitdir,
+        remote: "origin",
+        ref: "main",
+        onAuth: () => this.onAuth(),
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      // Gitee push succeeds but response format isn't parsed by isomorphic-git
+      if (msg.includes("unpack ok")) {
+        this.log("push: Gitee response parsed as error but push likely succeeded");
+        return;
+      }
+      throw err;
+    }
   }
 
   async initAndPull(): Promise<ConflictFile[]> {

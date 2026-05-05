@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "node esbuild.config.mjs",
     "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
-    "typecheck": "tsc -noEmit -skipLibCheck"
+    "typecheck": "tsc -noEmit -skipLibCheck",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "author": "dqxcj",
   "license": "MIT",
