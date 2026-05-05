@@ -193,11 +193,10 @@ export class GitCore {
 
   async getStagedDiff(): Promise<string> {
     try {
-      // Use git diff to detect changes (more reliable than checking status)
       const status = await git.statusMatrix({ fs, dir: this.dir, gitdir: this.gitdir, ignored: true });
       const changedFiles: string[] = [];
       for (const [filepath, headStatus, workdirStatus, stageStatus] of status) {
-        // staged: stageStatus === 0 (after add) or workdirStatus !== headStatus (changed)
+        if (filepath.startsWith(".git/") || filepath.includes("/.git/")) continue;
         if (stageStatus === 0 || workdirStatus !== headStatus) {
           changedFiles.push(filepath);
         }

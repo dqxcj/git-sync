@@ -172,7 +172,7 @@ export class Syncer {
 
     const now = new Date();
     const ts = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
-    return `[auto] update: ${ts}`;
+    return `自动同步: ${ts}`;
   }
 
   startTimer(intervalMinutes: number): void {
