@@ -117,8 +117,8 @@ export class GitCore {
     this.log(`addAll: StatusMatrix 返回 ${status.length} 条, dir=${this.dir}, gitdir=${this.gitdir}`);
     const toAdd: string[] = [];
     for (const [filepath, , worktreeStatus] of status) {
-      // Never add .git internal files
-      if (filepath.startsWith(".git/") || filepath === ".git") continue;
+      // Never add .git internal files (including nested repos)
+      if (filepath.startsWith(".git/") || filepath === ".git" || filepath.includes("/.git/")) continue;
       if (worktreeStatus) {
         toAdd.push(filepath);
       } else if (this.debug) {
