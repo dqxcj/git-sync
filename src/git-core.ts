@@ -25,9 +25,9 @@ export class GitCore {
   }
 
   private onAuth() {
-    // Gitee uses token as password, username can be anything
-    // GitHub also accepts token as username with empty password
-    return { username: this.token, password: "" };
+    // Basic Auth for HTTPS git: base64(username:password)
+    // Gitee: username can be anything, password is the token
+    return { username: "api", password: this.token };
   }
 
   async isRepo(): Promise<boolean> {
