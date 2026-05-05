@@ -1,4 +1,6 @@
 import { Plugin, Notice, Platform } from "obsidian";
+import * as git from "isomorphic-git";
+import http from "isomorphic-git/http/node";
 import { GitCore } from "./git-core";
 import { Syncer } from "./syncer";
 import { DeepSeekClient } from "./deepseek";
@@ -130,6 +132,50 @@ export default class GitSyncPlugin extends Plugin {
 
   private hasRemoteAuth(): boolean {
     return !!(this.settings.notesRepo.token);
+  }
+
+  async testGitAuth(url: string, token: string): Promise<{ ok: boolean; message: string }> {
+    const headers = { Authorization: `Bearer ${token}` };
+
+    try {
+      const info = await git.getRemoteInfo({
+        http,
+        url,
+        headers,
+      });
+      const refs = info.refs ? Object.keys(info.refs).length : 0;
+      return { ok: true, message: `连接成功 (${refs} 个远程引用)` };
+    } catch (e: any) {
+      const msg = e.message || String(e);
+      if (msg.includes("401") || msg.includes("403") || msg.includes("Authentication")) {
+        return { ok: false, message: "令牌无效或无权限" };
+      }
+      if (msg.includes("ENOTFOUND") || msg.includes("fetch")) {
+        return { ok: false, message: "网络连接失败，请检查地址" };
+      }
+      return { ok: false, message: msg.substring(0, 100) };
+    }
+  }
+
+  async testDeepSeek(): Promise<{ ok: boolean; message: string }> {
+    const client = new DeepSeekClient(
+      this.settings.deepseekApiKey,
+      this.settings.deepseekUrl,
+      this.settings.deepseekModel
+    );
+    try {
+      const response = await (client as any).chat([{ role: "user", content: "Hello" }]);
+      return { ok: true, message: `连接成功 (${this.settings.deepseekModel})` };
+    } catch (e: any) {
+      const msg = e.message || String(e);
+      if (msg.includes("401") || msg.includes("403")) {
+        return { ok: false, message: "API Key 无效" };
+      }
+      if (msg.includes("429")) {
+        return { ok: false, message: "请求频率超限，稍后重试" };
+      }
+      return { ok: false, message: msg.substring(0, 100) };
+    }
   }
 
   private stopAll(): void {

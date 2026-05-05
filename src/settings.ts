@@ -1,4 +1,4 @@
-import { App, PluginSettingTab, Setting } from "obsidian";
+import { App, PluginSettingTab, Setting, Notice } from "obsidian";
 import GitSyncPlugin from "./main";
 import { DEFAULT_SETTINGS, SyncStrategy } from "./types";
 
@@ -43,6 +43,26 @@ export class GitSyncSettingTab extends PluginSettingTab {
             this.plugin.settings.notesRepo.token = value;
             await this.plugin.saveSettings();
           })
+      )
+      .addButton((btn) =>
+        btn.setButtonText("测试令牌").onClick(async () => {
+          const url = this.plugin.settings.notesRepo.remoteUrl;
+          const token = this.plugin.settings.notesRepo.token;
+          if (!url || !token) {
+            new Notice("请先填写远程地址和令牌");
+            return;
+          }
+          btn.setButtonText("测试中...");
+          btn.setDisabled(true);
+          try {
+            const result = await this.plugin.testGitAuth(url, token);
+            new Notice(result.ok ? `✓ 令牌有效：${result.message}` : `✗ 令牌无效：${result.message}`);
+          } catch (e: any) {
+            new Notice(`✗ 测试失败：${e.message || e}`);
+          }
+          btn.setButtonText("测试令牌");
+          btn.setDisabled(false);
+        })
       );
 
     // --- Config Repo Section ---
@@ -138,6 +158,25 @@ export class GitSyncSettingTab extends PluginSettingTab {
             this.plugin.settings.deepseekApiKey = value;
             await this.plugin.saveSettings();
           })
+      )
+      .addButton((btn) =>
+        btn.setButtonText("测试 API").onClick(async () => {
+          const key = this.plugin.settings.deepseekApiKey;
+          if (!key) {
+            new Notice("请先填写 API Key");
+            return;
+          }
+          btn.setButtonText("测试中...");
+          btn.setDisabled(true);
+          try {
+            const result = await this.plugin.testDeepSeek();
+            new Notice(result.ok ? `✓ API 正常：${result.message}` : `✗ API 异常：${result.message}`);
+          } catch (e: any) {
+            new Notice(`✗ 测试失败：${e.message || e}`);
+          }
+          btn.setButtonText("测试 API");
+          btn.setDisabled(false);
+        })
       );
 
     new Setting(containerEl)
