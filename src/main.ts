@@ -42,9 +42,10 @@ export default class GitSyncPlugin extends Plugin {
     this.stopAll();
 
     const strategy = this.settings.syncStrategy;
-    if (strategy === "manual" || !this.isConfigured()) return;
+    if (strategy === "manual") return;
+    if (!this.settings.notesRepo.enabled) return;
 
-    // Initialize syncers
+    // Initialize syncers (works without token for local-only commits)
     this.initSyncers();
 
     // Timer
@@ -72,20 +73,20 @@ export default class GitSyncPlugin extends Plugin {
     const vaultPath = (this.app.vault.adapter as any).getBasePath();
 
     // Notes repo
-    if (this.settings.notesRepo.enabled && this.settings.notesRepo.remoteUrl && this.settings.notesRepo.token) {
+    if (this.settings.notesRepo.enabled && this.settings.notesRepo.remoteUrl) {
       const notesGit = new GitCore(vaultPath, `${vaultPath}/.git`, this.settings.notesRepo.remoteUrl, this.settings.notesRepo.token);
-      const notesLlm = new DeepSeekClient(this.settings.deepseekApiKey, this.settings.deepseekUrl);
+      const notesLlm = new DeepSeekClient(this.settings.deepseekApiKey, this.settings.deepseekUrl, this.settings.deepseekModel);
       this.notesStatusBar = new StatusBarManager(this.addStatusBarItem(), "笔记");
       this.notesSyncer = new Syncer(notesGit, notesLlm, this.settings.llmCommitInterval, (event) => {
         this.notesStatusBar?.update(event);
-      });
+      }, this.hasRemoteAuth());
     }
 
     // Config repo
     if (this.settings.configRepo.enabled && this.settings.configRepo.remoteUrl && this.settings.configRepo.token) {
       const configDir = `${vaultPath}/.obsidian`;
       const configGit = new GitCore(configDir, `${configDir}/.git`, this.settings.configRepo.remoteUrl, this.settings.configRepo.token);
-      const configLlm = new DeepSeekClient(this.settings.deepseekApiKey, this.settings.deepseekUrl);
+      const configLlm = new DeepSeekClient(this.settings.deepseekApiKey, this.settings.deepseekUrl, this.settings.deepseekModel);
       this.configStatusBar = new StatusBarManager(this.addStatusBarItem(), "配置");
       this.configSyncer = new Syncer(configGit, configLlm, this.settings.llmCommitInterval, (event) => {
         this.configStatusBar?.update(event);
@@ -94,8 +95,8 @@ export default class GitSyncPlugin extends Plugin {
   }
 
   private async syncAll(): Promise<void> {
-    if (!this.isConfigured()) {
-      new Notice("Git 同步：请先在设置中配置远程仓库地址和令牌");
+    if (!this.settings.notesRepo.enabled) {
+      new Notice("Git 同步：请先在设置中启用笔记仓库并填写远程地址");
       return;
     }
 
@@ -129,12 +130,8 @@ export default class GitSyncPlugin extends Plugin {
     }
   }
 
-  private isConfigured(): boolean {
-    return !!(
-      this.settings.notesRepo.enabled &&
-      this.settings.notesRepo.remoteUrl &&
-      this.settings.notesRepo.token
-    );
+  private hasRemoteAuth(): boolean {
+    return !!(this.settings.notesRepo.token);
   }
 
   private stopAll(): void {

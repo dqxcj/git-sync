@@ -3,10 +3,12 @@ import { DeepSeekMessage, DeepSeekResponse } from "./types";
 export class DeepSeekClient {
   private apiKey: string;
   private baseUrl: string;
+  private model: string;
 
-  constructor(apiKey: string, baseUrl: string = "https://api.deepseek.com") {
+  constructor(apiKey: string, baseUrl: string = "https://api.deepseek.com", model: string = "deepseek-v4-flash") {
     this.apiKey = apiKey;
     this.baseUrl = baseUrl;
+    this.model = model;
   }
 
   private async chat(messages: DeepSeekMessage[]): Promise<string> {
@@ -17,7 +19,7 @@ export class DeepSeekClient {
         Authorization: `Bearer ${this.apiKey}`,
       },
       body: JSON.stringify({
-        model: "deepseek-chat",
+        model: this.model,
         messages,
         temperature: 0.3,
         max_tokens: 2048,

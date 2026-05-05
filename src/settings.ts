@@ -154,6 +154,20 @@ export class GitSyncSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
+      .setName("模型")
+      .setDesc("DeepSeek 模型（deepseek-v4-flash 性价比最高，deepseek-v4-pro 质量更高）")
+      .addDropdown((dropdown) =>
+        dropdown
+          .addOption("deepseek-v4-flash", "deepseek-v4-flash（推荐）")
+          .addOption("deepseek-v4-pro", "deepseek-v4-pro（更高质量）")
+          .setValue(this.plugin.settings.deepseekModel)
+          .onChange(async (value) => {
+            this.plugin.settings.deepseekModel = value;
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
       .setName("LLM 提交间隔")
       .setDesc("1 = 每次提交都让 LLM 生成 commit 信息；N = 累积 N 次提交后总结一次")
       .addSlider((slider) =>

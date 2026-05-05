@@ -16,6 +16,7 @@ export interface PluginSettings {
   llmCommitInterval: number;
   deepseekApiKey: string;
   deepseekUrl: string;
+  deepseekModel: string;
 }
 
 export const DEFAULT_SETTINGS: PluginSettings = {
@@ -26,6 +27,7 @@ export const DEFAULT_SETTINGS: PluginSettings = {
   llmCommitInterval: 1,
   deepseekApiKey: "",
   deepseekUrl: "https://api.deepseek.com",
+  deepseekModel: "deepseek-v4-flash",
 };
 
 export interface DeepSeekMessage {

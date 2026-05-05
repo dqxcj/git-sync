@@ -6,6 +6,7 @@ export class Syncer {
   private git: GitCore;
   private llm: DeepSeekClient;
   private onEvent: SyncerCallback;
+  private hasRemote: boolean;
   private commitCounter: number = 0;
   private accumulatedDiffs: string[] = [];
   private llmCommitInterval: number;
@@ -16,12 +17,14 @@ export class Syncer {
     git: GitCore,
     llm: DeepSeekClient,
     llmCommitInterval: number,
-    onEvent: SyncerCallback
+    onEvent: SyncerCallback,
+    hasRemote: boolean = true
   ) {
     this.git = git;
     this.llm = llm;
     this.llmCommitInterval = llmCommitInterval;
     this.onEvent = onEvent;
+    this.hasRemote = hasRemote;
   }
 
   private emit(event: SyncerEvent): void {
@@ -44,14 +47,16 @@ export class Syncer {
     this.running = true;
 
     try {
-      // 1. Pull
-      this.emit({ type: "pulling", message: "正在拉取..." });
-      const conflicts = await this.git.pullWithConflictDetection();
+      // 1. Pull (only if remote available)
+      if (this.hasRemote) {
+        this.emit({ type: "pulling", message: "正在拉取..." });
+        const conflicts = await this.git.pullWithConflictDetection();
 
-      // 2. Resolve conflicts
-      if (conflicts.length > 0) {
-        this.emit({ type: "conflict", message: `${conflicts.length} 个冲突` });
-        await this.resolveConflicts(conflicts);
+        // 2. Resolve conflicts
+        if (conflicts.length > 0) {
+          this.emit({ type: "conflict", message: `${conflicts.length} 个冲突` });
+          await this.resolveConflicts(conflicts);
+        }
       }
 
       // 3. Check local changes
@@ -64,12 +69,14 @@ export class Syncer {
         const message = await this.generateCommitMessage(diff);
         await this.git.commit(message);
 
-        // 5. Push
-        this.emit({ type: "pushing", message: "正在推送..." });
-        await this.git.push();
+        // 5. Push (only if remote available)
+        if (this.hasRemote) {
+          this.emit({ type: "pushing", message: "正在推送..." });
+          await this.git.push();
+        }
       }
 
-      this.emit({ type: "idle", message: "就绪" });
+      this.emit({ type: "idle", message: this.hasRemote ? "就绪" : "本地就绪" });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       this.emit({ type: "error", message: msg });
