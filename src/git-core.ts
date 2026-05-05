@@ -5,6 +5,8 @@ import http from "isomorphic-git/http/node";
 import { ConflictFile } from "./types";
 import { debugLog } from "./logger";
 
+const BRANCH = "master";
+
 export class GitCore {
   private dir: string;
   private gitdir: string;
@@ -24,11 +26,6 @@ export class GitCore {
     debugLog(this.debug, msg);
   }
 
-  private onAuth() {
-    return { username: "git", password: this.token };
-  }
-
-  // Embed credentials in URL — more reliable than onAuth for isomorphic-git
   private authUrl(): string {
     let username = "git";
     const match = this.remoteUrl.match(/\/([^\/]+)\/[^\/]+(?:\.git)?$/);
@@ -46,18 +43,27 @@ export class GitCore {
   }
 
   async init(): Promise<void> {
-    await git.init({ fs, dir: this.dir, gitdir: this.gitdir, defaultBranch: "main" });
+    await git.init({ fs, dir: this.dir, gitdir: this.gitdir, defaultBranch: BRANCH });
   }
 
   async listRemotes(): Promise<Array<{ remote: string; url: string }>> {
     return await git.listRemotes({ fs, dir: this.dir, gitdir: this.gitdir });
   }
 
+  async hasChanges(): Promise<boolean> {
+    const status = await git.statusMatrix({ fs, dir: this.dir, gitdir: this.gitdir, ignored: true });
+    for (const [filepath, , worktreeStatus] of status) {
+      if (filepath.startsWith(".git/") || filepath.includes("/.git/")) continue;
+      if (filepath === ".git-sync-debug.log") continue;
+      if (worktreeStatus) return true;
+    }
+    return false;
+  }
+
   async addRemote(): Promise<void> {
     const remotes = await git.listRemotes({ fs, dir: this.dir, gitdir: this.gitdir });
     const existing = remotes.find((r) => r.remote === "origin");
     if (existing) {
-      // Update if URL differs from configured
       if (existing.url !== this.remoteUrl) {
         this.log(`addRemote: 更新 origin URL: ${existing.url} -> ${this.remoteUrl}`);
         await git.deleteRemote({ fs, dir: this.dir, gitdir: this.gitdir, remote: "origin" });
@@ -71,51 +77,40 @@ export class GitCore {
     }
   }
 
-  private async doPull(branch: string): Promise<void> {
-    await git.pull({
-      fs,
-      http,
-      dir: this.dir,
-      gitdir: this.gitdir,
-      url: this.authUrl(),
-      ref: branch,
-      singleBranch: true,
-      author: { name: "Obsidian Git Sync", email: "sync@obsidian.local" },
-    });
-  }
-
   async pullWithConflictDetection(): Promise<ConflictFile[]> {
-    const isGitee = this.remoteUrl.includes("gitee.com");
-    const branches = isGitee ? ["master", "main"] : ["main", "master"];
-    for (const branch of branches) {
-      try {
-        await this.doPull(branch);
-        this.log(`pull: ${branch} 成功`);
-        return [];
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : String(err);
-        if (msg.includes("Merge conflict") || msg.includes("CONFLICT")) {
-          return await this.scanConflicts();
-        }
-        if (msg.includes("Could not find") || msg.includes("Not Found") || msg.includes("Couldn't find")) {
-          this.log(`pull: ${branch} 不存在, 尝试下一个`);
-          continue;
-        }
-        if (msg.includes("401") || msg.includes("403")) {
-          this.log(`pull: ${branch} 认证失败: ${msg.substring(0, 50)}`);
-          continue;
-        }
-        throw err;
+    try {
+      await git.pull({
+        fs, http,
+        dir: this.dir, gitdir: this.gitdir,
+        url: this.authUrl(),
+        ref: BRANCH, singleBranch: true,
+        author: { name: "Obsidian Git Sync", email: "sync@obsidian.local" },
+      });
+      this.log(`pull: 成功`);
+      return [];
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("Merge conflict") || msg.includes("CONFLICT")) {
+        return await this.scanConflicts();
       }
+      if (msg.includes("Could not find") || msg.includes("Not Found") || msg.includes("Couldn't find")) {
+        this.log(`pull: 远程无 ${BRANCH} 分支 (空仓库)`);
+        return [];
+      }
+      if (msg.includes("401") || msg.includes("403")) {
+        this.log(`pull: 认证失败: ${msg.substring(0, 50)}`);
+        // Don't throw — try push later
+        return [];
+      }
+      this.log(`pull: 失败 (继续) — ${msg.substring(0, 80)}`);
+      return [];
     }
-    return [];
   }
 
   private async scanConflicts(): Promise<ConflictFile[]> {
     const conflicts: ConflictFile[] = [];
     const files = await git.listFiles({ fs, dir: this.dir, gitdir: this.gitdir });
     for (const filepath of files) {
-      // Only read Markdown/text files (skip binaries)
       if (filepath.match(/\.(md|txt|json|css|js|ts|yml|yaml|html|canvas)$/)) {
         try {
           const absPath = path.join(this.dir, filepath);
@@ -123,9 +118,7 @@ export class GitCore {
           if (content.includes("<<<<<<<") || content.includes(">>>>>>>")) {
             conflicts.push({ path: absPath, content });
           }
-        } catch {
-          // Skip unreadable files
-        }
+        } catch { /* skip */ }
       }
     }
     return conflicts;
@@ -137,141 +130,92 @@ export class GitCore {
 
   async addAll(): Promise<void> {
     const status = await git.statusMatrix({ fs, dir: this.dir, gitdir: this.gitdir, ignored: true });
-    this.log(`addAll: StatusMatrix 返回 ${status.length} 条, dir=${this.dir}, gitdir=${this.gitdir}`);
+    this.log(`addAll: StatusMatrix 返回 ${status.length} 条, dir=${this.dir}`);
     const toAdd: string[] = [];
     for (const [filepath, , worktreeStatus] of status) {
-      // Never add .git internal files or debug log
-      if (filepath.startsWith(".git/") || filepath === ".git" || filepath.includes("/.git/")) continue;
+      if (filepath.startsWith(".git/") || filepath.includes("/.git/")) continue;
       if (filepath === ".git-sync-debug.log") continue;
-      if (worktreeStatus) {
-        toAdd.push(filepath);
-      } else if (this.debug) {
-        this.log(`addAll: 跳过 ${filepath} (worktreeStatus=${worktreeStatus})`);
-      }
+      if (worktreeStatus) toAdd.push(filepath);
     }
-
-    // Fallback for brand-new repos without HEAD: walk directory manually
     if (toAdd.length === 0) {
-      this.log("addAll: statusMatrix empty, walking directory");
-      this.walkFiles((relPath) => {
-        toAdd.push(relPath);
-        this.log(`addAll: walk发现 ${relPath}`);
-      });
+      this.walkFiles((relPath) => toAdd.push(relPath));
     }
-
-    this.log(`addAll: 准备添加 ${toAdd.length} 个文件: ${toAdd.slice(0, 10).join(", ")}`);
+    this.log(`addAll: 准备添加 ${toAdd.length} 个文件: ${toAdd.slice(0, 5).join(", ")}`);
     if (toAdd.length > 0) {
-      await Promise.all(
-        toAdd.map((f) => git.add({ fs, dir: this.dir, gitdir: this.gitdir, filepath: f }))
-      );
-      this.log("addAll: git.add 完成");
+      await Promise.all(toAdd.map((f) => git.add({ fs, dir: this.dir, gitdir: this.gitdir, filepath: f })));
     }
   }
 
   private walkFiles(cb: (relPath: string) => void, subDir: string = ""): void {
     const base = path.join(this.dir, subDir);
-    const entries = fs.readdirSync(base, { withFileTypes: true });
+    let entries: fs.Dirent[];
+    try { entries = fs.readdirSync(base, { withFileTypes: true }); } catch { return; }
     for (const entry of entries) {
       const relPath = subDir ? path.join(subDir, entry.name) : entry.name;
       if (entry.name === ".git" || entry.name === ".obsidian") continue;
-      if (entry.isDirectory()) {
-        this.walkFiles(cb, relPath);
-      } else {
-        cb(relPath);
-      }
+      if (entry.isDirectory()) { this.walkFiles(cb, relPath); }
+      else { cb(relPath); }
     }
   }
 
   async commit(message: string): Promise<string> {
-    const sha = await git.commit({
-      fs,
-      dir: this.dir,
-      gitdir: this.gitdir,
-      message,
+    return await git.commit({
+      fs, dir: this.dir, gitdir: this.gitdir, message,
       author: { name: "Obsidian Git Sync", email: "sync@obsidian.local" },
     });
-    return sha;
   }
 
   async getStagedDiff(): Promise<string> {
     try {
-      // Use git diff to detect changes (more reliable than checking status)
       const status = await git.statusMatrix({ fs, dir: this.dir, gitdir: this.gitdir, ignored: true });
       const changedFiles: string[] = [];
       for (const [filepath, headStatus, workdirStatus, stageStatus] of status) {
         if (filepath.startsWith(".git/") || filepath.includes("/.git/")) continue;
         if (filepath === ".git-sync-debug.log") continue;
-        // staged: stageStatus === 0 (after add) or workdirStatus !== headStatus (changed)
-        if (stageStatus === 0 || workdirStatus !== headStatus) {
-          changedFiles.push(filepath);
-        }
+        if (stageStatus === 0 || workdirStatus !== headStatus) changedFiles.push(filepath);
       }
-
-      // Fallback for new repo: just check if any files were added
       if (changedFiles.length === 0) return "";
-
       let diff = "";
       for (const filepath of changedFiles) {
         try {
           const absPath = path.join(this.dir, filepath);
           if (fs.existsSync(absPath)) {
-            const content = fs.readFileSync(absPath, "utf-8");
-            diff += `\n${filepath} (${content.length} bytes)\n`;
+            diff += `\n${filepath} (${fs.readFileSync(absPath, "utf-8").length} bytes)\n`;
           }
-        } catch {
-          // skip binary or unreadable
-        }
+        } catch { /* skip */ }
       }
       return diff;
-    } catch {
-      return "";
-    }
+    } catch { return ""; }
   }
 
   async push(): Promise<void> {
-    const isGitee = this.remoteUrl.includes("gitee.com");
-    const targets = isGitee
-      ? [{ ref: "main", remoteRef: "refs/heads/master" }, { ref: "main" }]
-      : [{ ref: "main" }, { ref: "main", remoteRef: "refs/heads/master" }];
-
-    for (const opts of targets) {
-      try {
-        await git.push({
-          fs, http,
-          dir: this.dir, gitdir: this.gitdir,
-          url: this.authUrl(),
-          force: false,
-          ...opts,
-        });
-        this.log(`push: main -> ${opts.remoteRef || "main"} 成功`);
-        return;
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : String(err);
-        if (msg.includes("unpack ok")) {
-          this.log(`push: 成功 (unpack ok)`);
-          return;
-        }
-        if (msg.includes("fast-forward") || msg.includes("rejected")) {
-          this.log(`push: 被拒绝, 远程有更新, 需先 pull`);
-        } else {
-          this.log(`push: main -> ${opts.remoteRef || "main"} 失败: ${msg.substring(0, 80)}`);
-        }
+    try {
+      await git.push({
+        fs, http,
+        dir: this.dir, gitdir: this.gitdir,
+        url: this.authUrl(),
+        ref: BRANCH,
+        force: false,
+      });
+      this.log(`push: 成功`);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("unpack ok")) { this.log(`push: 成功 (unpack ok)`); return; }
+      if (msg.includes("fast-forward") || msg.includes("rejected")) {
+        this.log(`push: 被拒绝, 远程有更新, 需先 pull`);
+        throw err;
       }
+      this.log(`push: 失败 — ${msg.substring(0, 80)}`);
+      throw err;
     }
-    throw new Error("push 被拒: 远程有更新, 下次 sync 自动 pull 合并");
   }
 
   async initAndPull(): Promise<ConflictFile[]> {
     const exists = await this.isRepo();
     if (!exists) {
-      await git.init({ fs, dir: this.dir, gitdir: this.gitdir, defaultBranch: "main" });
+      await git.init({ fs, dir: this.dir, gitdir: this.gitdir, defaultBranch: BRANCH });
     }
     await this.addRemote();
-    try {
-      return await this.pullWithConflictDetection();
-    } catch {
-      // Remote may be empty (new repo) — that's fine, sync() will push later
-      return [];
-    }
+    return await this.pullWithConflictDetection();
   }
 }
